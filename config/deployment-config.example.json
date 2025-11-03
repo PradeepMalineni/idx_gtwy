@@ -1,0 +1,32 @@
+{
+  "apigee": {
+    "method": "github_actions",
+    "workflow": ".github/workflows/deploy-apigee.yml",
+    "enabled": false,
+    "config": {
+      "organization": "my-org",
+      "environment": "prod",
+      "api_base_path": "/v1"
+    }
+  },
+  "datapower": {
+    "method": "harness",
+    "pipeline": "datapower-deployment",
+    "enabled": false,
+    "config": {
+      "domain": "production",
+      "gateway_url": "https://datapower.company.com",
+      "security_profile": "pci-compliant"
+    }
+  },
+  "gitlab_ci": {
+    "method": "gitlab_ci",
+    "pipeline_file": ".gitlab-ci.yml",
+    "enabled": false,
+    "config": {
+      "project_id": "12345",
+      "trigger_token": "your-trigger-token"
+    }
+  }
+}
+

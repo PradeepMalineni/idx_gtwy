@@ -1,0 +1,175 @@
+openapi: 3.0.0
+info:
+  title: Payment Processing API
+  description: API for processing payments (PCI data example)
+  version: 2.0.0
+  contact:
+    email: security@paymentco.com
+
+servers:
+  - url: https://api.paymentco.com/v2
+    description: Production server
+
+paths:
+  /payments:
+    post:
+      summary: Process a payment
+      operationId: processPayment
+      tags:
+        - payments
+      security:
+        - OAuth2: [process:payments]
+        - mTLS: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '200':
+          description: Payment processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid payment data
+        '401':
+          description: Unauthorized
+        '402':
+          description: Payment declined
+
+  /payments/{paymentId}:
+    get:
+      summary: Get payment details
+      operationId: getPayment
+      tags:
+        - payments
+      security:
+        - OAuth2: [read:payments]
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          description: The ID of the payment
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment details (PAN masked)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '404':
+          description: Payment not found
+
+components:
+  schemas:
+    PaymentRequest:
+      type: object
+      required:
+        - amount
+        - currency
+        - cardNumber
+        - expiryDate
+        - cvv
+        - cardholderName
+      properties:
+        amount:
+          type: number
+          format: double
+          description: Payment amount
+          example: 99.99
+        currency:
+          type: string
+          description: Currency code
+          example: USD
+          pattern: '^[A-Z]{3}$'
+        cardNumber:
+          type: string
+          description: Primary Account Number (PAN)
+          example: "4111111111111111"
+          pattern: '^\d{13,19}$'
+        expiryDate:
+          type: string
+          description: Card expiration date (MM/YY)
+          example: "12/25"
+          pattern: '^\d{2}/\d{2}$'
+        cvv:
+          type: string
+          description: Card Verification Value
+          example: "123"
+          pattern: '^\d{3,4}$'
+        cardholderName:
+          type: string
+          description: Name on card
+          example: "John Doe"
+        billingAddress:
+          $ref: '#/components/schemas/Address'
+
+    PaymentResponse:
+      type: object
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+          description: Unique payment identifier
+        status:
+          type: string
+          enum: [approved, declined, pending]
+          description: Payment status
+        maskedPAN:
+          type: string
+          description: Masked card number (last 4 digits only)
+          example: "****1111"
+        amount:
+          type: number
+          format: double
+          description: Payment amount
+        currency:
+          type: string
+          description: Currency code
+        timestamp:
+          type: string
+          format: date-time
+          description: Payment timestamp
+        authorizationCode:
+          type: string
+          description: Authorization code from processor
+
+    Address:
+      type: object
+      properties:
+        street:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postalCode:
+          type: string
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.paymentco.com/oauth/token
+          scopes:
+            process:payments: Process payment transactions
+            read:payments: Read payment information
+    
+    mTLS:
+      type: mutualTLS
+      description: Mutual TLS authentication required for all payment endpoints
+
+security:
+  - OAuth2: []
+  - mTLS: []
+

@@ -1,0 +1,13 @@
+{
+  "gateway": "datapower",
+  "reason": "Pre-configured for PCI compliance - handles payment card data",
+  "configured_at": "2025-11-01T10:30:00Z",
+  "configured_by": "security-team",
+  "notes": "This API processes credit card payments and must use DataPower for PCI DSS compliance",
+  "deployment": {
+    "method": "harness",
+    "pipeline": "datapower-payment-api",
+    "environment": "production"
+  }
+}
+

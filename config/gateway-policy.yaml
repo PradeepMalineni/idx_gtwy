@@ -1,0 +1,155 @@
+# Gateway Selection Policy Rules
+# Static, auditable rules for API Gateway selection
+# DO NOT use LLM for decision-making - only static rule matching
+
+version: "1.0"
+description: "Policy rules for selecting API Gateway (Apigee vs DataPower)"
+
+# Rules are evaluated in priority order (lower number = higher priority)
+# First matching rule wins
+
+rules:
+  # Rule 1: External API with PCI data but no authentication - ESCALATE
+  - id: rule_001
+    name: "External PCI without Security - Escalate"
+    priority: 1
+    conditions:
+      api_exposure: external
+      has_pci: true
+      auth_type: none
+    action: escalate
+    escalation_email: "ESGADEV@team.com"
+    reason: "External API with PCI data but no authentication - security escalation required"
+    description: |
+      Any external API handling PCI data without authentication is a critical security risk.
+      This requires immediate escalation to the enterprise security governance team.
+
+  # Rule 2: External API with PCI data and proper authentication - DataPower
+  - id: rule_002
+    name: "External PCI with OAuth/mTLS - DataPower"
+    priority: 2
+    conditions:
+      api_exposure: external
+      has_pci: true
+      auth_type: [oauth, mtls, both]
+    action: route
+    gateway: datapower
+    reason: "External API with PCI data and strong authentication → DataPower (PCI DSS compliant gateway)"
+    description: |
+      DataPower is PCI DSS Level 1 certified and provides the required security controls
+      for handling cardholder data in external-facing APIs.
+
+  # Rule 3: Internal API with PCI data - DataPower
+  - id: rule_003
+    name: "Internal PCI - DataPower"
+    priority: 3
+    conditions:
+      api_exposure: internal
+      has_pci: true
+    action: route
+    gateway: datapower
+    reason: "Internal API with PCI data → DataPower (required for PCI compliance)"
+    description: |
+      Even internal APIs handling PCI data must use DataPower to maintain
+      PCI DSS compliance and proper audit trails.
+
+  # Rule 4: External API without PCI data with OAuth - Apigee
+  - id: rule_004
+    name: "External non-PCI with OAuth - Apigee"
+    priority: 4
+    conditions:
+      api_exposure: external
+      has_pci: false
+      auth_type: [oauth, mtls, both]
+    action: route
+    gateway: apigee
+    reason: "External API without PCI data with OAuth → Apigee (modern cloud gateway)"
+    description: |
+      Apigee provides excellent developer experience and modern cloud-native features
+      for non-PCI external APIs.
+
+  # Rule 5: External API without PCI and no auth - Apigee (but warn)
+  - id: rule_005
+    name: "External non-PCI without auth - Apigee"
+    priority: 5
+    conditions:
+      api_exposure: external
+      has_pci: false
+      auth_type: none
+    action: route
+    gateway: apigee
+    reason: "External API without PCI → Apigee (but consider adding authentication)"
+    warning: "External APIs should implement authentication even without PCI data"
+    description: |
+      While this API doesn't handle PCI data, it's recommended to add authentication
+      for any external-facing API.
+
+  # Rule 6: Internal API without PCI data - Apigee
+  - id: rule_006
+    name: "Internal non-PCI - Apigee"
+    priority: 6
+    conditions:
+      api_exposure: internal
+      has_pci: false
+    action: route
+    gateway: apigee
+    reason: "Internal API without PCI data → Apigee (lightweight option)"
+    description: |
+      Apigee is suitable for internal APIs that don't handle sensitive data,
+      providing good performance and easy integration.
+
+  # Default rule - catches anything not matched above
+  - id: rule_default
+    name: "Default - Apigee"
+    priority: 999
+    conditions: {}
+    action: route
+    gateway: apigee
+    reason: "Default routing to Apigee (no specific conditions matched)"
+    description: |
+      Default fallback rule. If no other rules match, route to Apigee as the
+      general-purpose gateway.
+
+# Gateway configurations
+gateways:
+  apigee:
+    name: "Apigee X"
+    description: "Modern cloud-native API gateway"
+    capabilities:
+      - "OAuth 2.0 / OIDC"
+      - "Rate limiting / Quota management"
+      - "API Analytics"
+      - "Developer Portal"
+      - "Traffic management"
+    use_cases:
+      - "External APIs (non-PCI)"
+      - "Internal APIs (non-PCI)"
+      - "Modern microservices"
+      - "Developer-facing APIs"
+
+  datapower:
+    name: "IBM DataPower Gateway"
+    description: "Enterprise-grade security gateway with PCI DSS certification"
+    capabilities:
+      - "PCI DSS Level 1 Certified"
+      - "Advanced threat protection"
+      - "mTLS / OAuth 2.0"
+      - "Data encryption at rest and in transit"
+      - "Comprehensive audit logging"
+      - "XML/JSON threat protection"
+    use_cases:
+      - "PCI data handling (any exposure)"
+      - "High security requirements"
+      - "Regulated industries"
+      - "Legacy system integration"
+
+# Compliance settings
+compliance:
+  pci_dss:
+    required_gateway: datapower
+    audit_retention_days: 365
+    
+  general:
+    audit_all_decisions: true
+    require_authentication_for_external: recommended
+
