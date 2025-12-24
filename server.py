@@ -28,6 +28,8 @@ from modules.policy_engine import PolicyEngine
 from modules.audit_logger import AuditLogger
 from modules.deployment import DeploymentManager
 from modules.context_manager import ContextManager
+from modules.react_agent import ReActAgent
+from modules.reasoning_engine import ReasoningEngine
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +48,10 @@ policy_engine = PolicyEngine()
 audit_logger = AuditLogger()
 deployment_manager = DeploymentManager()
 context_manager = ContextManager()
+
+# Initialize ReAct agent
+react_agent = ReActAgent()
+reasoning_engine = ReasoningEngine()
 
 
 class GatewayGovernanceAgent:
@@ -401,6 +407,116 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["session_id"]
             }
+        ),
+        Tool(
+            name="select_gateway_with_reasoning",
+            description=(
+                "Select gateway using ReAct (Reasoning + Acting) mode. "
+                "Provides full transparency with Sense → Think → Act → Feedback cycle. "
+                "Shows all observations, reasoning steps, and action plans. "
+                "Stores reasoning traces externally for audit and learning."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_dir": {
+                        "type": "string",
+                        "description": "Path to the project directory containing the API"
+                    },
+                    "request_feedback": {
+                        "type": "boolean",
+                        "description": "Whether to request human feedback before executing",
+                        "default": True
+                    }
+                },
+                "required": ["project_dir"]
+            }
+        ),
+        Tool(
+            name="provide_feedback",
+            description=(
+                "Provide feedback on agent's reasoning and decisions (RLHF). "
+                "Helps the system learn and improve over time. "
+                "Feedback types: approval, correction, suggestion."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Session ID from previous reasoning call"
+                    },
+                    "feedback_type": {
+                        "type": "string",
+                        "description": "Type of feedback",
+                        "enum": ["approval", "correction", "suggestion"]
+                    },
+                    "feedback": {
+                        "type": "string",
+                        "description": "Feedback text"
+                    },
+                    "rating": {
+                        "type": "number",
+                        "description": "Rating from 0.0 (poor) to 1.0 (excellent)",
+                        "minimum": 0.0,
+                        "maximum": 1.0
+                    },
+                    "corrections": {
+                        "type": "object",
+                        "description": "Corrections to apply (for correction type)"
+                    }
+                },
+                "required": ["session_id", "feedback_type", "feedback"]
+            }
+        ),
+        Tool(
+            name="view_reasoning_trace",
+            description=(
+                "View detailed reasoning trace showing Sense → Think → Act → Feedback steps. "
+                "Provides full transparency into agent's decision-making process."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "trace_id": {
+                        "type": "string",
+                        "description": "Trace ID to view (omit for current trace)"
+                    },
+                    "include_details": {
+                        "type": "boolean",
+                        "description": "Include full details vs summary",
+                        "default": False
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="search_reasoning_traces",
+            description=(
+                "Search historical reasoning traces for patterns and learning. "
+                "Useful for understanding past decisions and improvements."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_pattern": {
+                        "type": "string",
+                        "description": "Task pattern to match"
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Status filter",
+                        "enum": ["success", "failure", "partial"]
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum results",
+                        "default": 10
+                    }
+                },
+                "required": []
+            }
         )
     ]
 
@@ -515,6 +631,91 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
             return [TextContent(
                 type="text",
                 text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "select_gateway_with_reasoning":
+            project_dir = arguments.get("project_dir")
+            request_feedback = arguments.get("request_feedback", True)
+            
+            result = await react_agent.process_gateway_selection(
+                project_dir=project_dir,
+                request_feedback=request_feedback
+            )
+            
+            return [TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "provide_feedback":
+            session_id = arguments.get("session_id")
+            feedback_type = arguments.get("feedback_type")
+            feedback = arguments.get("feedback")
+            rating = arguments.get("rating")
+            corrections = arguments.get("corrections")
+            
+            result = await react_agent.provide_feedback(
+                session_id=session_id,
+                feedback_type=feedback_type,
+                feedback=feedback,
+                rating=rating,
+                corrections=corrections
+            )
+            
+            return [TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "view_reasoning_trace":
+            trace_id = arguments.get("trace_id")
+            include_details = arguments.get("include_details", False)
+            
+            if trace_id:
+                trace = reasoning_engine.load_trace(trace_id)
+                if not trace:
+                    return [TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": f"Trace not found: {trace_id}"
+                        })
+                    )]
+                
+                if not include_details:
+                    # Return summary
+                    trace = {
+                        "trace_id": trace["trace_id"],
+                        "task": trace["task"],
+                        "status": trace["status"],
+                        "summary": trace.get("summary"),
+                        "metrics": trace.get("metrics"),
+                        "steps_count": len(trace.get("steps", []))
+                    }
+            else:
+                trace = react_agent.get_reasoning_trace()
+            
+            return [TextContent(
+                type="text",
+                text=json.dumps(trace, indent=2)
+            )]
+        
+        elif name == "search_reasoning_traces":
+            task_pattern = arguments.get("task_pattern")
+            status = arguments.get("status")
+            limit = arguments.get("limit", 10)
+            
+            traces = reasoning_engine.search_traces(
+                task_pattern=task_pattern,
+                status=status,
+                limit=limit
+            )
+            
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "traces": traces,
+                    "count": len(traces)
+                }, indent=2)
             )]
         
         else:
